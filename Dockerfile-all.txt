@@ -1,0 +1,60 @@
+FROM jupyter/datascience-notebook
+
+USER root
+
+# Install a few tools and updates
+RUN apt-get update --yes && \
+    apt-get install --yes --no-install-recommends \
+        libmariadb-dev \
+        openconnect \
+        curl \
+        gnupg2 \
+        apt-transport-https \
+        ca-certificates \
+        software-properties-common && \
+    apt-get clean
+
+# Install code-server (which allows access to VS Code-like interface via browser)
+RUN curl -k -fsSL https://code-server.dev/install.sh | sh
+
+# Modify the permissions on .cache to allow the installation of languageserver
+RUN chown -R jovyan /home/jovyan/.cache
+
+USER ${NB_UID}
+
+# Autocompletion
+RUN pip install jupyterlab-lsp
+RUN pip install 'python-lsp-server[all]'
+RUN julia -e 'using Pkg; Pkg.add(["LanguageServer"])'
+RUN Rscript -e "install.packages(c('languageserver'), repos='https://cran.rstudio.com')"
+
+# Install req.
+RUN Rscript -e "install.packages(c('odbc', 'RMySQL', 'RMariaDB', 'IRkernel'), repos='https://cran.rstudio.com')"
+
+RUN Rscript -e "IRkernel::installspec()"
+
+# Basic Julia packages
+RUN julia -e 'using Pkg; Pkg.add(["DataFrames", "CSV", "Revise", "Dates"])'
+RUN julia -e 'using Pkg; Pkg.add(["StatsBase", "LsqFit", "CurveFit", "MultivariateStats", "Distributions", "Combinatorics", "Distances"])'
+RUN julia -e 'using Pkg; Pkg.add(["Plots", "StatsPlots", "LaTeXStrings", "ColorSchemes"])'
+
+# Complex networks
+RUN julia -e 'using Pkg; Pkg.add(["Graphs", "GraphIO", "GraphPlot", "SimpleWeightedGraphs", "MetaGraphs"])'
+RUN pip install igraph
+RUN Rscript -e "install.packages(c('igraph', 'igraphdata'), repos='https://cran.rstudio.com')"
+
+# Hierarchical clustering
+RUN julia -e 'using Pkg; Pkg.add(["Clustering"])'
+RUN Rscript -e "install.packages(c('mdendro', 'ape', 'dendextend'), repos='https://cran.rstudio.com')"
+
+# Pytorch for Autoencoder
+RUN pip install torch
+
+# SOM
+RUN pip install minisom somoclu
+
+# Expose the code-server port
+EXPOSE 8080
+
+# Create an entrypoint to run both JupyterLab and code-server
+CMD ["sh", "-c", "jupyter lab --ip=0.0.0.0 --allow-root --NotebookApp.token='' & code-server --bind-addr 0.0.0.0:8080 --auth none"]
